@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="La Cajita TV — Programas, noticias, deportes y TV en vivo." />
+    <title>La Cajita TV</title>
+
+    <!-- Fuentes -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap"
+        rel="stylesheet" />
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" href="imges/102.png" />
+
+    <!-- Estilos -->
+    <link rel="stylesheet" href="styles.css" />
+
+    <!-- HLS.js para streams en vivo -->
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest/dist/hls.min.js"></script>
+</head>
+
+<body>
+
+    <!-- ── HEADER ──────────────────────────────────────────────── -->
+    <header>
+        <nav>
+            <a class="logo" href="#" id="logo-link" aria-label="La Cajita TV inicio">
+                <img class="logo-img" src="imges/102.png" alt="La Cajita TV" id="church-name-nav" />
+            </a>
+
+            <div class="search-wrap" id="search-wrap">
+                <svg viewBox="0 0 24 24">
+                    <circle cx="11" cy="11" r="8" />
+                    <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                </svg>
+                <input type="search" id="search-input" placeholder="Buscar contenido..." autocomplete="off" />
+            </div>
+
+            <select id="sort-select" aria-label="Ordenar">
+                <option value="newest">Más reciente</option>
+                <option value="oldest">Más antiguo</option>
+                <option value="a-z">A–Z</option>
+                <option value="z-a">Z–A</option>
+            </select>
+        </nav>
+    </header>
+
+    <!-- ── HERO CAROUSEL ──────────────────────────────────────── -->
+    <section id="hero-carousel" aria-label="Contenido destacado">
+        <div class="carousel-track" id="carousel-track"></div>
+        <!-- Flechas -->
+        <button class="carousel-arrow prev" id="carousel-prev" aria-label="Anterior">
+            <svg viewBox="0 0 24 24">
+                <polyline points="15 18 9 12 15 6" />
+            </svg>
+        </button>
+        <button class="carousel-arrow next" id="carousel-next" aria-label="Siguiente">
+            <svg viewBox="0 0 24 24">
+                <polyline points="9 18 15 12 9 6" />
+            </svg>
+        </button>
+        <!-- Puntos de navegación -->
+        <div class="carousel-dots" id="carousel-dots"></div>
+        <!-- Tiras de miniaturas -->
+        <div class="carousel-thumbs" id="carousel-thumbs"></div>
+        <!-- Barra de progreso -->
+        <div class="carousel-progress" id="carousel-progress"></div>
+    </section>
+
+    <!-- ── CATEGORÍAS ─────────────────────────────────────────── -->
+    <div class="tabs-wrap">
+        <div id="category-tabs" role="tablist"></div>
+    </div>
+
+    <!-- ── CONTENIDO PRINCIPAL ────────────────────────────────── -->
+    <main id="main">
+        <h2 class="section-title" id="section-heading">Cargando contenido…</h2>
+        <div id="content-grid" class="content-grid"></div>
+        <div id="load-more-wrap" style="display:none">
+            <button id="load-more-btn">Cargar más</button>
+        </div>
+    </main>
+
+    <!-- ── FOOTER ─────────────────────────────────────────────── -->
+    <footer id="site-footer">
+        <div class="footer-inner">
+            <div class="footer-logo-wrap">
+                <img src="imges/102.png" alt="La Cajita TV" class="footer-logo" />
+            </div>
+            <div class="footer-banner-wrap">
+                <img src="imges/La Cajita tiendas.png" alt="Descarga La Cajita en Google Play, App Store, Amazon y Roku"
+                    class="footer-banner" />
+            </div>
+            <p class="footer-copy">&copy; 2026 La Cajita TV &mdash; Todos los derechos reservados.</p>
+        </div>
+    </footer>
+
+    <!-- ── MODAL DE VIDEO ─────────────────────────────────────── -->
+    <div id="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+        <div id="modal">
+            <div class="modal-header">
+                <h2 id="modal-title"></h2>
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <!-- Hint de rotación: solo visible en móvil portrait -->
+                    <div id="rotate-hint" aria-label="Rotar pantalla para mejor vista" title="Gira el dispositivo">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="4" y="2" width="16" height="20" rx="2" />
+                            <path d="M17 17H7" />
+                        </svg>
+                        <span>Gira el dispositivo</span>
+                    </div>
+                    <button id="modal-close" aria-label="Cerrar">✕</button>
+                </div>
+            </div>
+            <div id="modal-player"></div>
+            <p id="modal-desc"></p>
+            <div id="episodes-section" style="display:none">
+                <div class="episodes-title">Episodios</div>
+                <div id="episodes-list"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── LÓGICA DE LA APLICACIÓN ───────────────────────────── -->
+    <script src="app.js"></script>
+
+</body>
+
+</html>
