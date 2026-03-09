@@ -1,0 +1,25 @@
+{
+    "name": "lacajitamovil",
+    "version": "1.0.0",
+    "description": "La Cajita TV — App movil con Capacitor",
+    "main": "app.js",
+    "scripts": {
+        "build": "echo No build step needed for plain HTML",
+        "cap:sync": "npx cap sync",
+        "cap:android": "npx cap open android",
+        "cap:ios": "npx cap open ios"
+    },
+    "keywords": [
+        "streaming",
+        "tv",
+        "capacitor"
+    ],
+    "author": "La Cajita TV",
+    "license": "ISC",
+    "dependencies": {
+        "@capacitor/android": "^8.2.0",
+        "@capacitor/cli": "^8.2.0",
+        "@capacitor/core": "^8.2.0",
+        "@capacitor/ios": "^8.2.0"
+    }
+}

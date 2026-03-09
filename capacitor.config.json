@@ -1,0 +1,6 @@
+{
+    "appId": "com.lacajita.tv",
+    "appName": "La Cajita TV",
+    "webDir": "www",
+    "bundledWebRuntime": false
+}
