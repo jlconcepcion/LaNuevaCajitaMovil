@@ -1274,33 +1274,50 @@ nav {
         overflow: hidden;
     }
 
-    /* Cabecera del modal más pequeña */
+    /* Cabecera del modal flotante */
     .modal-header {
-        padding: 8px 12px 0;
-        flex-shrink: 0;
+        position: absolute;
+        top: 0;
+        right: 0;
+        z-index: 20;
+        padding: 8px 12px;
+        background: transparent;
     }
 
     #modal-title {
-        font-size: 1rem;
+        display: none;
     }
 
     #modal-close {
-        width: 28px;
-        height: 28px;
-        font-size: .9rem;
+        width: 32px;
+        height: 32px;
+        font-size: 1rem;
+        background: rgba(0, 0, 0, 0.5);
+        color: #fff;
+        border: none;
     }
 
     /* En landscape ocupar toda la ventana */
     .player-wrap {
-        flex-shrink: 1;
+        flex: 1;
+        display: flex;
+        flex-direction: column;
     }
 
-    /* Player ocupa todo el alto disponible */
+    .player-container {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        background: #000;
+    }
+
+    /* Player ocupa todo el alto disponible sin márgenes */
     #modal-player {
         aspect-ratio: unset;
-        margin: 4px 0 0;
-        min-height: 0;
+        margin: 0;
         flex: 1;
+        height: 100%;
     }
 
     /* Descripción oculta para ganar espacio */
@@ -1323,20 +1340,40 @@ nav {
     }
 
     #modal:has(.episodes-open) .player-wrap {
-        flex: 0 0 58%;
+        flex: 0 0 68%;
+        /* Más espacio al video (68%) */
         display: flex;
         flex-direction: column;
         max-height: 100vh;
+        position: relative;
+        /* Para anclar el modal-header */
     }
 
+    /* En lugar de ocultar el header para no perder la "X", lo hacemos flotante arriba a la derecha */
     #modal:has(.episodes-open) .modal-header {
-        display: none;
+        display: flex;
+        position: absolute;
+        top: 0;
+        right: 0;
+        z-index: 20;
+        padding: 8px;
+        background: transparent;
     }
 
-    /* El player-container (con logo) ocupa el espacio restante en player-wrap */
+    #modal:has(.episodes-open) #modal-close {
+        background: rgba(0, 0, 0, 0.5);
+        color: #fff;
+        border: none;
+    }
+
+    /* El player ocupa el espacio y se centra */
     #modal:has(.episodes-open) .player-container {
         flex: 1;
         min-height: 0;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        background: #000;
     }
 
     #modal:has(.episodes-open) #modal-player {
