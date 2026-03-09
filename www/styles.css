@@ -679,6 +679,10 @@ nav {
     padding: 12px 14px 14px;
 }
 
+#modal-title {
+    display: none;
+}
+
 .card-title {
     font-size: .88rem;
     font-weight: 600;
