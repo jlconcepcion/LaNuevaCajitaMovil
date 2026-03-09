@@ -1,9 +1,12 @@
 /* ============================================================
    CONFIG
 ============================================================ */
-const CHURCH_ID = 141;
-const API_BASE = 'https://tvappbuilder.com/API/V1/embed';
-const PAGE_SIZE = 12;
+const CONFIG = {
+    churchId: 141,
+    apiBase: 'https://tvappbuilder.com/API/V1/embed',
+    pageSize: 12,           // ítems por petición API por categoría
+    carouselInterval: 6000, // ms
+};
 
 /* ============================================================
    STATE
@@ -12,14 +15,15 @@ let allCategories = [];
 let activeCatId = 'all';
 let currentSort = 'newest';
 let searchQuery = '';
-let displayedCount = PAGE_SIZE;
+let fetchOffset = 0;     // offset actual (para el próximo fetch)
+let feedHasMore = false; // ¿quedan más ítems en la API?
+let isFetchingMore = false; // bloquea doble-click en "Cargar más"
 let hlsInstance = null;
 
 // Carousel state
-let carouselSlides = []; // [{item, catName}]
+let carouselSlides = [];
 let carouselIndex = 0;
 let carouselTimer = null;
-const CAROUSEL_INTERVAL = 6000; // ms
 
 /* ============================================================
    UTILITIES
@@ -45,28 +49,89 @@ function debounce(fn, ms) {
     return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
 }
 
+/** Normaliza barras invertidas escapadas en URLs de la API */
+function cleanUrl(url) {
+    return url ? url.replace(/\\/g, '/') : '';
+}
+
 /* ============================================================
    FETCH
 ============================================================ */
-async function fetchFeed(sort = 'newest') {
-    const url = `${API_BASE}/feed.php?church=${CHURCH_ID}&limit=100&include_live=true&sort=${sort}`;
+async function fetchFeed(sort = 'newest', offset = 0) {
+    const url = `${CONFIG.apiBase}/feed.php?church=${CONFIG.churchId}` +
+        `&limit=${CONFIG.pageSize}&include_live=true&sort=${sort}&offset=${offset}`;
     const res = await fetch(url);
     if (!res.ok) throw new Error('API error ' + res.status);
     return res.json();
 }
 
 async function fetchSearch(q) {
-    const url = `${API_BASE}/search.php?church=${CHURCH_ID}&q=${encodeURIComponent(q)}`;
+    const url = `${CONFIG.apiBase}/search.php?church=${CONFIG.churchId}&q=${encodeURIComponent(q)}`;
     const res = await fetch(url);
     if (!res.ok) throw new Error('Search error ' + res.status);
     return res.json();
 }
 
 async function fetchEpisodes(seriesId) {
-    const url = `${API_BASE}/episodes.php?series_id=${seriesId}`;
+    const url = `${CONFIG.apiBase}/episodes.php?series_id=${seriesId}`;
     const res = await fetch(url);
     if (!res.ok) throw new Error('Episodes error ' + res.status);
     return res.json();
+}
+
+/* ============================================================
+   PAGINATION — fusionar página nueva sin duplicados
+============================================================ */
+/**
+ * Fusiona las categorías de una nueva página en allCategories.
+ * Actualiza has_more por categoría para saber si hay más.
+ * @returns {boolean} true si al menos una categoría tiene has_more = true
+ */
+function mergeCategories(newCats) {
+    let anyHasMore = false;
+
+    for (const newCat of newCats) {
+        if (newCat.has_more) anyHasMore = true;
+
+        const existing = allCategories.find(c => c.id === newCat.id);
+        if (existing) {
+            // Agrega solo los ítems que aún no están
+            const seenIds = new Set(existing.content.map(i => i.id));
+            for (const item of newCat.content) {
+                if (!seenIds.has(item.id)) {
+                    existing.content.push(item);
+                    seenIds.add(item.id);
+                }
+            }
+            existing.has_more = newCat.has_more;
+            existing.total = newCat.total;
+        }
+    }
+    return anyHasMore;
+}
+
+/**
+ * Comprueba si alguna categoría visible aún tiene más ítems en la API.
+ */
+function computeFeedHasMore() {
+    if (activeCatId === 'all') {
+        return allCategories.some(c => c.has_more);
+    }
+    const cat = allCategories.find(c => c.id === activeCatId);
+    return cat ? cat.has_more : false;
+}
+
+/* ============================================================
+   SPLASH SCREEN
+============================================================ */
+function hideSplash() {
+    const splash = $('splash-screen');
+    if (!splash) return;
+    // Esperar un mínimo de 1.2 s para que el logo sea visible
+    const MIN_DISPLAY = 1200;
+    const elapsed = performance.now();
+    const delay = Math.max(0, MIN_DISPLAY - elapsed);
+    setTimeout(() => splash.classList.add('hidden'), delay);
 }
 
 /* ============================================================
@@ -75,9 +140,9 @@ async function fetchEpisodes(seriesId) {
 async function init() {
     showGridLoading();
     try {
-        const data = await fetchFeed(currentSort);
+        const data = await fetchFeed(currentSort, 0);
 
-        // Brand color
+        // Brand color / nombre
         if (data.branding?.brand_color) {
             document.documentElement.style.setProperty('--brand', data.branding.brand_color);
         }
@@ -88,22 +153,58 @@ async function init() {
         }
 
         allCategories = data.categories || [];
+        fetchOffset = CONFIG.pageSize;            // próximo offset
+        feedHasMore = allCategories.some(c => c.has_more);
 
-        // Build carousel: most recent item from each category
+        // Carousel: primer ítem con thumbnail de cada categoría
         carouselSlides = [];
         for (const cat of allCategories) {
             const item = cat.content.find(c => c.thumbnail);
             if (item) carouselSlides.push({ item, catName: cat.name });
         }
         buildCarousel();
-
         buildTabs();
         renderGrid();
 
     } catch (e) {
-        $('content-grid').innerHTML = `<div class="state-msg">⚠️ Error al cargar contenido. Intenta refrescar la página.</div>`;
+        $('content-grid').innerHTML =
+            `<div class="state-msg">⚠️ Error al cargar contenido. Intenta refrescar la página.</div>`;
         console.error(e);
+    } finally {
+        hideSplash(); // ocultar splash siempre, con o sin error
     }
+}
+
+/* ============================================================
+   LOAD MORE — paginación real via API
+============================================================ */
+async function loadMoreFromAPI() {
+    if (isFetchingMore || !feedHasMore) return;
+    isFetchingMore = true;
+    showLoadMoreSpinner(true);
+
+    try {
+        const data = await fetchFeed(currentSort, fetchOffset);
+        const newCats = data.categories || [];
+
+        mergeCategories(newCats);
+        fetchOffset += CONFIG.pageSize;
+        feedHasMore = computeFeedHasMore();
+
+        renderGrid();
+    } catch (e) {
+        console.error('Error cargando más contenido:', e);
+    } finally {
+        isFetchingMore = false;
+        showLoadMoreSpinner(false);
+    }
+}
+
+function showLoadMoreSpinner(show) {
+    const btn = $('load-more-btn');
+    if (!btn) return;
+    btn.disabled = show;
+    btn.textContent = show ? 'Cargando…' : 'Cargar más';
 }
 
 /* ============================================================
@@ -120,7 +221,6 @@ function buildCarousel() {
     thumbs.innerHTML = '';
 
     carouselSlides.forEach(({ item, catName }, i) => {
-        // ── Slide ──────────────────────────────────────────────
         const slide = document.createElement('div');
         slide.className = 'carousel-slide' + (i === 0 ? ' active' : '');
 
@@ -143,14 +243,14 @@ function buildCarousel() {
         slide.querySelector('.carousel-play-btn').addEventListener('click', () => openModal(item));
         track.appendChild(slide);
 
-        // ── Dot ──────────────────────────────────────────────
+        // Dot
         const dot = document.createElement('button');
         dot.className = 'carousel-dot' + (i === 0 ? ' active' : '');
         dot.setAttribute('aria-label', `Slide ${i + 1}: ${item.title}`);
         dot.addEventListener('click', () => goToSlide(i));
         dots.appendChild(dot);
 
-        // ── Thumb ─────────────────────────────────────────────
+        // Thumb (solo si hay pocos slides)
         if (carouselSlides.length <= 8) {
             const thumb = document.createElement('div');
             thumb.className = 'carousel-thumb' + (i === 0 ? ' active' : '');
@@ -185,7 +285,7 @@ function goToSlide(idx) {
 function startCarouselTimer() {
     clearInterval(carouselTimer);
     resetProgressBar();
-    carouselTimer = setInterval(() => goToSlide(carouselIndex + 1), CAROUSEL_INTERVAL);
+    carouselTimer = setInterval(() => goToSlide(carouselIndex + 1), CONFIG.carouselInterval);
 }
 
 function resetProgressBar() {
@@ -193,29 +293,9 @@ function resetProgressBar() {
     bar.style.transition = 'none';
     bar.style.width = '0%';
     bar.offsetWidth; // force reflow
-    bar.style.transition = `width ${CAROUSEL_INTERVAL}ms linear`;
+    bar.style.transition = `width ${CONFIG.carouselInterval}ms linear`;
     bar.style.width = '100%';
 }
-
-// Arrow controls
-$('carousel-prev').addEventListener('click', () => { goToSlide(carouselIndex - 1); startCarouselTimer(); });
-$('carousel-next').addEventListener('click', () => { goToSlide(carouselIndex + 1); startCarouselTimer(); });
-
-// Pause on hover
-$('hero-carousel').addEventListener('mouseenter', () => {
-    clearInterval(carouselTimer);
-    const bar = $('carousel-progress');
-    bar.style.transition = 'none';
-});
-$('hero-carousel').addEventListener('mouseleave', () => startCarouselTimer());
-
-// Swipe support (touch)
-let touchStartX = 0;
-$('hero-carousel').addEventListener('touchstart', e => { touchStartX = e.touches[0].clientX; }, { passive: true });
-$('hero-carousel').addEventListener('touchend', e => {
-    const dx = e.changedTouches[0].clientX - touchStartX;
-    if (Math.abs(dx) > 40) { goToSlide(carouselIndex + (dx < 0 ? 1 : -1)); startCarouselTimer(); }
-}, { passive: true });
 
 /* ============================================================
    TABS
@@ -233,11 +313,11 @@ function buildTabs() {
         btn.setAttribute('aria-selected', cat.id === activeCatId);
         btn.addEventListener('click', () => {
             activeCatId = cat.id;
-            displayedCount = PAGE_SIZE;
             document.querySelectorAll('.tab-btn').forEach(b => {
                 b.classList.toggle('active', b === btn);
                 b.setAttribute('aria-selected', b === btn);
             });
+            feedHasMore = computeFeedHasMore();
             renderGrid();
         });
         container.appendChild(btn);
@@ -248,10 +328,9 @@ function buildTabs() {
    GRID
 ============================================================ */
 function getVisibleItems() {
+    if (searchQuery) return [];
+
     let items = [];
-
-    if (searchQuery) return []; // handled separately
-
     if (activeCatId === 'all') {
         const seen = new Set();
         for (const cat of allCategories) {
@@ -261,14 +340,18 @@ function getVisibleItems() {
         }
     } else {
         const cat = allCategories.find(c => c.id === activeCatId);
-        if (cat) items = cat.content;
+        if (cat) items = [...cat.content];
     }
 
-    items = [...items];
     if (currentSort === 'a-z') items.sort((a, b) => a.title.localeCompare(b.title));
     else if (currentSort === 'z-a') items.sort((a, b) => b.title.localeCompare(a.title));
 
     return items;
+}
+
+function getCategoryName() {
+    if (activeCatId === 'all') return 'Todo el contenido';
+    return allCategories.find(c => c.id === activeCatId)?.name ?? 'Contenido';
 }
 
 function renderGrid(searchResults) {
@@ -277,16 +360,14 @@ function renderGrid(searchResults) {
     const lmWrap = $('load-more-wrap');
 
     const items = searchResults ?? getVisibleItems();
-    const slice = items.slice(0, displayedCount);
 
-    if (searchResults !== undefined) {
-        heading.textContent = searchQuery
+    // Heading
+    if (searchQuery) {
+        heading.textContent = searchResults !== undefined
             ? `Resultados para "${searchQuery}" (${items.length})`
-            : activeCatId === 'all' ? 'Todo el contenido'
-                : (allCategories.find(c => c.id === activeCatId)?.name ?? 'Contenido');
+            : `Buscando "${searchQuery}"…`;
     } else {
-        heading.textContent = activeCatId === 'all' ? 'Todo el contenido'
-            : (allCategories.find(c => c.id === activeCatId)?.name ?? 'Contenido');
+        heading.textContent = getCategoryName();
     }
 
     if (!items.length) {
@@ -295,17 +376,26 @@ function renderGrid(searchResults) {
         return;
     }
 
-    grid.innerHTML = slice.map(item => cardHTML(item)).join('');
+    grid.innerHTML = items.map(item => cardHTML(item)).join('');
 
     grid.querySelectorAll('.card').forEach(card => {
-        card.addEventListener('click', () => {
+        const handler = () => {
             const id = card.dataset.id;
             const item = items.find(i => i.id === id);
             if (item) openModal(item);
+        };
+        card.addEventListener('click', handler);
+        card.addEventListener('keydown', e => {
+            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handler(); }
         });
     });
 
-    lmWrap.style.display = displayedCount < items.length ? 'block' : 'none';
+    // "Cargar más" solo si la API tiene más ítems (no para búsqueda)
+    if (searchResults !== undefined) {
+        lmWrap.style.display = 'none';
+    } else {
+        lmWrap.style.display = feedHasMore ? 'block' : 'none';
+    }
 }
 
 function cardHTML(item) {
@@ -348,6 +438,55 @@ function showGridLoading() {
 }
 
 /* ============================================================
+   PLAYER (funciones auxiliares compartidas)
+============================================================ */
+function attachHlsOrNative(videoEl, url) {
+    if (Hls.isSupported()) {
+        hlsInstance = new Hls();
+        hlsInstance.loadSource(url);
+        hlsInstance.attachMedia(videoEl);
+        hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => videoEl.play().catch(() => { }));
+    } else if (videoEl.canPlayType('application/vnd.apple.mpegurl')) {
+        videoEl.src = url;
+        videoEl.play().catch(() => { });
+    } else {
+        videoEl.parentElement.innerHTML =
+            `<div class="state-msg">Tu navegador no soporta HLS.</div>`;
+    }
+}
+
+function playInPlayer(container, ep) {
+    container.innerHTML = '';
+    if (hlsInstance) { hlsInstance.destroy(); hlsInstance = null; }
+
+    if (ep.embed_url) {
+        container.innerHTML = `<iframe src="${ep.embed_url}" allowfullscreen allow="autoplay; encrypted-media; picture-in-picture"></iframe>`;
+        return;
+    }
+
+    const streamSrc = cleanUrl(ep.stream_url);
+    const fileSrc = cleanUrl(ep.file_url);
+    const src = streamSrc || fileSrc;
+
+    if (src) {
+        const vid = document.createElement('video');
+        vid.controls = true; vid.autoplay = true; vid.playsInline = true;
+        container.appendChild(vid);
+        if (src.includes('.m3u8') || ep.stream_url) {
+            attachHlsOrNative(vid, src);
+        } else {
+            container.innerHTML = `<iframe src="${src}" allowfullscreen allow="autoplay"></iframe>`;
+        }
+        return;
+    }
+
+    container.innerHTML = `
+  <div style="display:flex;align-items:center;justify-content:center;background:var(--bg3);position:absolute;inset:0;color:var(--muted);">
+    No hay reproductor disponible para este contenido.
+  </div>`;
+}
+
+/* ============================================================
    MODAL / PLAYER
 ============================================================ */
 function openModal(item) {
@@ -360,58 +499,19 @@ function openModal(item) {
 
     player.innerHTML = '';
     epSec.style.display = 'none';
+    epSec.classList.remove('episodes-open');
     $('episodes-list').innerHTML = '';
     if (hlsInstance) { hlsInstance.destroy(); hlsInstance = null; }
 
-    if (item.embed_url) {
-        player.innerHTML = `<iframe src="${item.embed_url}" allowfullscreen allow="autoplay; encrypted-media; picture-in-picture"></iframe>`;
-    } else if (item.stream_url) {
-        const streamUrl = item.stream_url.replace(/\\\\/g, '/');
-        const vid = document.createElement('video');
-        vid.controls = true; vid.autoplay = true; vid.playsInline = true;
-        player.appendChild(vid);
-
-        if (Hls.isSupported()) {
-            hlsInstance = new Hls();
-            hlsInstance.loadSource(streamUrl);
-            hlsInstance.attachMedia(vid);
-            hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => vid.play().catch(() => {}));
-        } else if (vid.canPlayType('application/vnd.apple.mpegurl')) {
-            vid.src = streamUrl;
-            vid.play().catch(() => {});
-        } else {
-            player.innerHTML = `<div class="state-msg">Tu navegador no soporta HLS.</div>`;
-        }
-    } else if (item.is_series) {
+    if (item.is_series) {
         player.innerHTML = `
   <div style="display:flex;align-items:center;justify-content:center;background:var(--bg3);position:absolute;inset:0;">
     <img src="${item.thumbnail}" alt="${esc(item.title)}" style="max-height:100%;max-width:100%;object-fit:contain;opacity:.4" />
     <span style="position:absolute;color:var(--muted);font-size:.9rem">Selecciona un episodio ↓</span>
   </div>`;
         loadEpisodes(item.id);
-    } else if (item.file_url) {
-        const cleanUrl = item.file_url.replace(/\\\\/g, '/');
-        if (cleanUrl.includes('.m3u8')) {
-            const vid = document.createElement('video');
-            vid.controls = true; vid.autoplay = true; vid.playsInline = true;
-            player.appendChild(vid);
-            if (Hls.isSupported()) {
-                hlsInstance = new Hls();
-                hlsInstance.loadSource(cleanUrl);
-                hlsInstance.attachMedia(vid);
-                hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => vid.play().catch(() => {}));
-            } else if (vid.canPlayType('application/vnd.apple.mpegurl')) {
-                vid.src = cleanUrl; vid.play().catch(() => {});
-            }
-        } else {
-            player.innerHTML = `<iframe src="${cleanUrl}" allowfullscreen allow="autoplay"></iframe>`;
-        }
     } else {
-        player.innerHTML = `
-  <div style="display:flex;align-items:center;justify-content:center;background:var(--bg3);position:absolute;inset:0;color:var(--muted);">
-    No hay reproductor disponible para este contenido.
-  </div>`;
-        if (item.is_series) loadEpisodes(item.id);
+        playInPlayer(player, item);
     }
 
     overlay.classList.add('open');
@@ -422,6 +522,7 @@ async function loadEpisodes(seriesId) {
     const epSec = $('episodes-section');
     const epList = $('episodes-list');
     epSec.style.display = 'block';
+    epSec.classList.add('episodes-open');
     epList.innerHTML = `<div class="ep-loading"><div class="spinner" style="width:24px;height:24px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:8px"></div>Cargando episodios…</div>`;
 
     try {
@@ -434,7 +535,8 @@ async function loadEpisodes(seriesId) {
         epList.innerHTML = eps.map((ep, i) => `
   <div class="ep-item" data-embed="${esc(ep.embed_url || '')}"
        data-file="${esc(ep.file_url || '')}" data-stream="${esc(ep.stream_url || '')}"
-       data-title="${esc(ep.title || '')}" data-thumb="${esc(ep.thumbnail || '')}">
+       data-title="${esc(ep.title || '')}" data-thumb="${esc(ep.thumbnail || '')}"
+       data-desc="${esc(ep.description || '')}">
     <div class="ep-thumb">
       <img src="${esc(ep.thumbnail || '')}" alt="${esc(ep.title)}" loading="lazy" onerror="this.style.opacity=0" />
     </div>
@@ -446,39 +548,25 @@ async function loadEpisodes(seriesId) {
   </div>`).join('');
 
         epList.querySelectorAll('.ep-item').forEach(el => {
-            el.addEventListener('click', () => {
+            const handler = () => {
                 const ep = {
                     title: el.dataset.title,
                     embed_url: el.dataset.embed,
                     file_url: el.dataset.file,
                     stream_url: el.dataset.stream,
                     thumbnail: el.dataset.thumb,
-                    is_series: false,
                 };
                 $('modal-title').textContent = ep.title;
-                const player = $('modal-player');
-                player.innerHTML = '';
-                if (hlsInstance) { hlsInstance.destroy(); hlsInstance = null; }
-
-                if (ep.embed_url) {
-                    player.innerHTML = `<iframe src="${ep.embed_url}" allowfullscreen allow="autoplay; encrypted-media; picture-in-picture"></iframe>`;
-                } else if (ep.file_url) {
-                    const cleanUrl = ep.file_url.replace(/\\\\/g, '/');
-                    const vid2 = document.createElement('video');
-                    vid2.controls = true; vid2.autoplay = true; vid2.playsInline = true;
-                    player.appendChild(vid2);
-                    if (Hls.isSupported()) {
-                        hlsInstance = new Hls();
-                        hlsInstance.loadSource(cleanUrl);
-                        hlsInstance.attachMedia(vid2);
-                        hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => vid2.play().catch(() => {}));
-                    } else { vid2.src = cleanUrl; vid2.play().catch(() => {}); }
-                }
+                $('modal-desc').textContent = el.dataset.desc || '';
+                playInPlayer($('modal-player'), ep);
                 $('modal-overlay').scrollTop = 0;
+            };
+            el.addEventListener('click', handler);
+            el.addEventListener('keydown', e => {
+                if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handler(); }
             });
         });
 
-        // Auto-click first episode
         epList.querySelector('.ep-item')?.click();
 
     } catch (e) {
@@ -501,9 +589,9 @@ function closeModal() {
 ============================================================ */
 const doSearch = debounce(async (q) => {
     searchQuery = q.trim();
-    displayedCount = PAGE_SIZE;
 
     if (!searchQuery) {
+        feedHasMore = computeFeedHasMore();
         renderGrid();
         return;
     }
@@ -518,15 +606,19 @@ const doSearch = debounce(async (q) => {
 }, 400);
 
 /* ============================================================
-   SORT (re-fetch)
+   SORT (re-fetch desde cero)
 ============================================================ */
 async function onSortChange(sort) {
     currentSort = sort;
-    displayedCount = PAGE_SIZE;
+    fetchOffset = 0;
+    feedHasMore = false;
     showGridLoading();
     try {
-        const data = await fetchFeed(sort);
+        const data = await fetchFeed(sort, 0);
         allCategories = data.categories || [];
+        fetchOffset = CONFIG.pageSize;
+        feedHasMore = allCategories.some(c => c.has_more);
+
         buildTabs();
         renderGrid();
     } catch (e) {
@@ -535,23 +627,39 @@ async function onSortChange(sort) {
 }
 
 /* ============================================================
-   EVENTS
+   EVENTS — dentro de DOMContentLoaded para seguridad
 ============================================================ */
-$('search-input').addEventListener('input', e => doSearch(e.target.value));
-$('sort-select').addEventListener('change', e => onSortChange(e.target.value));
-$('modal-close').addEventListener('click', closeModal);
-$('modal-overlay').addEventListener('click', e => { if (e.target === $('modal-overlay')) closeModal(); });
-document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
-$('load-more-btn').addEventListener('click', () => {
-    displayedCount += PAGE_SIZE;
-    if (searchQuery) {
-        fetchSearch(searchQuery).then(d => renderGrid(d.results || d.content || d.items || []));
-    } else {
-        renderGrid();
-    }
-});
+document.addEventListener('DOMContentLoaded', () => {
 
-/* ============================================================
-   START
-============================================================ */
-init();
+    // Carousel arrows
+    $('carousel-prev').addEventListener('click', () => { goToSlide(carouselIndex - 1); startCarouselTimer(); });
+    $('carousel-next').addEventListener('click', () => { goToSlide(carouselIndex + 1); startCarouselTimer(); });
+
+    // Pausa al hacer hover
+    $('hero-carousel').addEventListener('mouseenter', () => {
+        clearInterval(carouselTimer);
+        $('carousel-progress').style.transition = 'none';
+    });
+    $('hero-carousel').addEventListener('mouseleave', () => startCarouselTimer());
+
+    // Swipe táctil — touchStartX en scope local
+    let touchStartX = 0;
+    $('hero-carousel').addEventListener('touchstart', e => { touchStartX = e.touches[0].clientX; }, { passive: true });
+    $('hero-carousel').addEventListener('touchend', e => {
+        const dx = e.changedTouches[0].clientX - touchStartX;
+        if (Math.abs(dx) > 40) { goToSlide(carouselIndex + (dx < 0 ? 1 : -1)); startCarouselTimer(); }
+    }, { passive: true });
+
+    // Búsqueda, orden y modal
+    $('search-input').addEventListener('input', e => doSearch(e.target.value));
+    $('sort-select').addEventListener('change', e => onSortChange(e.target.value));
+    $('modal-close').addEventListener('click', closeModal);
+    $('modal-overlay').addEventListener('click', e => { if (e.target === $('modal-overlay')) closeModal(); });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+
+    // Cargar más — paginación real con API
+    $('load-more-btn').addEventListener('click', loadMoreFromAPI);
+
+    // START
+    init();
+});

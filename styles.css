@@ -781,10 +781,47 @@ nav {
     width: 100%;
     max-width: 920px;
     max-height: 90vh;
-    overflow-y: auto;
+    /* flex column: zona fija arriba, lista scrollable abajo */
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
     box-shadow: var(--shadow);
     transform: translateY(30px);
     transition: transform 0.3s;
+}
+
+/* ── Zona fija: header + player + descripción ─────────── */
+.player-wrap {
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Contenedor relativo para el logo overlay */
+.player-container {
+    position: relative;
+}
+
+/* Logo overlay en la esquina superior-izquierda del player */
+.player-logo-overlay {
+    position: absolute;
+    top: 10px;
+    left: 12px;
+    z-index: 10;
+    pointer-events: none;
+    opacity: 0.75;
+    transition: opacity 0.3s;
+}
+
+.player-logo-overlay:hover {
+    opacity: 1;
+}
+
+.player-logo-overlay img {
+    height: 34px;
+    width: auto;
+    display: block;
+    filter: drop-shadow(0 1px 6px rgba(0, 0, 0, 0.7));
 }
 
 #modal-overlay.open #modal {
@@ -835,6 +872,11 @@ nav {
     overflow: hidden;
 }
 
+/* Descripción del episodio — oculta en el modal */
+#modal-desc {
+    display: none;
+}
+
 #modal-player iframe,
 #modal-player video {
     position: absolute;
@@ -848,25 +890,24 @@ nav {
     background: #000;
 }
 
-#modal-desc {
-    padding: 16px 24px;
-    font-size: .88rem;
-    line-height: 1.65;
-    color: rgba(240, 239, 255, .75);
-}
-
-/* Episodes list */
+/* ── Zona scrollable: lista de episodios ─────────────── */
 #episodes-section {
-    padding: 0 24px 24px;
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    /* scroll suave en iOS */
+    -webkit-overflow-scrolling: touch;
 }
 
 .episodes-title {
     font-size: 1rem;
     font-weight: 700;
     margin-bottom: 14px;
+    padding: 16px 24px 0;
 }
 
 #episodes-list {
+    padding: 0 24px 24px;
     display: flex;
     flex-direction: column;
     gap: 10px;
@@ -991,6 +1032,46 @@ nav {
 
     50% {
         opacity: .6;
+    }
+}
+
+/* ============================================================
+   SPLASH SCREEN
+============================================================ */
+#splash-screen {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: #000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: opacity 0.6s ease, visibility 0.6s ease;
+}
+
+#splash-screen.hidden {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+}
+
+#splash-screen img {
+    width: min(80vw, 320px);
+    height: auto;
+    animation: splashPulse 1.8s ease-in-out infinite;
+}
+
+@keyframes splashPulse {
+
+    0%,
+    100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+
+    50% {
+        opacity: .75;
+        transform: scale(1.04);
     }
 }
 
@@ -1207,19 +1288,17 @@ nav {
         font-size: .9rem;
     }
 
-    /* Zona de contenido: video + episodios en fila */
-    #modal>*:not(.modal-header) {
-        flex: 1;
-        min-height: 0;
+    /* En landscape ocupar toda la ventana */
+    .player-wrap {
+        flex-shrink: 1;
     }
 
     /* Player ocupa todo el alto disponible */
     #modal-player {
         aspect-ratio: unset;
-        flex: 1 1 60%;
-        margin: 8px 0 0;
+        margin: 4px 0 0;
         min-height: 0;
-        max-height: calc(100vh - 56px);
+        flex: 1;
     }
 
     /* Descripción oculta para ganar espacio */
@@ -1235,27 +1314,51 @@ nav {
         max-height: calc(100vh - 56px);
     }
 
-    /* Layout horizontal: video izquierda | episodios derecha */
-    #modal:has(#episodes-section[style*="block"]) {
+    /* Layout horizontal: player-wrap izq | episodios der */
+    #modal:has(.episodes-open) {
         flex-direction: row;
         flex-wrap: nowrap;
     }
 
-    #modal:has(#episodes-section[style*="block"]) .modal-header {
+    #modal:has(.episodes-open) .player-wrap {
+        flex: 0 0 58%;
+        display: flex;
+        flex-direction: column;
+        max-height: 100vh;
+    }
+
+    #modal:has(.episodes-open) .modal-header {
         display: none;
     }
 
-    #modal:has(#episodes-section[style*="block"]) #modal-player {
-        flex: 0 0 55%;
-        max-height: 100vh;
-        margin: 0;
-        align-self: center;
+    /* El player-container (con logo) ocupa el espacio restante en player-wrap */
+    #modal:has(.episodes-open) .player-container {
+        flex: 1;
+        min-height: 0;
     }
 
-    #modal:has(#episodes-section[style*="block"]) #episodes-section {
+    #modal:has(.episodes-open) #modal-player {
+        aspect-ratio: unset;
+        height: 100%;
+        margin: 0;
+    }
+
+    /* Descripción compacta debajo del player en landscape */
+    #modal:has(.episodes-open) #modal-desc {
+        display: block;
+        font-size: .75rem;
+        padding: 6px 12px 8px;
+        -webkit-line-clamp: 1;
+        line-clamp: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    #modal:has(.episodes-open) #episodes-section {
         flex: 1 1 auto;
         max-height: 100vh;
-        padding: 8px;
+        padding: 0;
     }
 
     .ep-thumb {
