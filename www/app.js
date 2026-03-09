@@ -494,8 +494,11 @@ function openModal(item) {
     const player = $('modal-player');
     const epSec = $('episodes-section');
 
-    $('modal-title').textContent = item.title || '';
-    $('modal-desc').textContent = item.description || '';
+    const titleEl = $('modal-title');
+    if (titleEl) titleEl.textContent = item.title || '';
+
+    const descEl = $('modal-title');
+    if (descEl) descEl.textContent = item.description || '';
 
     player.innerHTML = '';
     epSec.style.display = 'none';
@@ -556,8 +559,11 @@ async function loadEpisodes(seriesId) {
                     stream_url: el.dataset.stream,
                     thumbnail: el.dataset.thumb,
                 };
-                $('modal-title').textContent = ep.title;
-                $('modal-desc').textContent = el.dataset.desc || '';
+                const titleEl = $('modal-title');
+                if (titleEl) titleEl.textContent = ep.title;
+
+                const descEl = $('modal-desc');
+                if (descEl) descEl.textContent = el.dataset.desc || '';
                 playInPlayer($('modal-player'), ep);
                 $('modal-overlay').scrollTop = 0;
             };
