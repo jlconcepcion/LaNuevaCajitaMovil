@@ -519,11 +519,6 @@ function openModal(item) {
 
     overlay.classList.add('open');
     document.body.style.overflow = 'hidden';
-    
-    // Request fullscreen on mobile automatically if supported and screen is small
-    if (window.innerWidth <= 720) {
-        attemptFullscreenAndLandscape(player);
-    }
 }
 
 async function attemptFullscreenAndLandscape(element) {
@@ -711,16 +706,21 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // Listen to orientation change to trigger resize adjustments
-    window.addEventListener('orientationchange', () => {
-        if ($('modal-overlay').classList.contains('open') && window.innerWidth <= 720) {
-            if (screen.orientation && screen.orientation.type.startsWith('landscape')) {
-               attemptFullscreenAndLandscape($('modal-player'));
-            } else if (screen.orientation && screen.orientation.type.startsWith('portrait')){
-                if (document.exitFullscreen) document.exitFullscreen().catch(()=>{});
+    // Handle orientation lock when entering or exiting fullscreen
+    const handleFullscreenChange = () => {
+        if (document.fullscreenElement || document.webkitFullscreenElement) {
+            if (window.innerWidth <= 720 && screen.orientation && screen.orientation.lock) {
+                screen.orientation.lock('landscape').catch(() => {});
+            }
+        } else {
+            if (screen.orientation && screen.orientation.unlock) {
+                screen.orientation.unlock();
             }
         }
-    });
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
 
     // Cargar más — paginación real con API
     $('load-more-btn').addEventListener('click', loadMoreFromAPI);
