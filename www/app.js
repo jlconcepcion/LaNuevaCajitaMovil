@@ -519,6 +519,30 @@ function openModal(item) {
 
     overlay.classList.add('open');
     document.body.style.overflow = 'hidden';
+    
+    // Request fullscreen on mobile automatically if supported and screen is small
+    if (window.innerWidth <= 720) {
+        attemptFullscreenAndLandscape(player);
+    }
+}
+
+async function attemptFullscreenAndLandscape(element) {
+    try {
+        if (element.requestFullscreen) {
+            await element.requestFullscreen();
+        } else if (element.webkitRequestFullscreen) {
+            await element.webkitRequestFullscreen();
+        } else if (element.msRequestFullscreen) {
+            await element.msRequestFullscreen();
+        }
+        
+        // Attempt to lock orientation to landscape
+        if (screen.orientation && screen.orientation.lock) {
+            await screen.orientation.lock('landscape').catch(() => {});
+        }
+    } catch (e) {
+        console.warn('Fullscreen/Orientation request failed', e);
+    }
 }
 
 async function loadEpisodes(seriesId) {
@@ -584,6 +608,19 @@ async function loadEpisodes(seriesId) {
 function closeModal() {
     $('modal-overlay').classList.remove('open');
     document.body.style.overflow = '';
+    
+    // Exit fullscreen and unlock orientation if active
+    try {
+        if (document.fullscreenElement) {
+            document.exitFullscreen().catch(() => {});
+        } else if (document.webkitFullscreenElement) {
+            document.webkitExitFullscreen().catch(() => {});
+        }
+        if (screen.orientation && screen.orientation.unlock) {
+            screen.orientation.unlock();
+        }
+    } catch (e) {}
+
     setTimeout(() => {
         $('modal-player').innerHTML = '';
         if (hlsInstance) { hlsInstance.destroy(); hlsInstance = null; }
@@ -662,6 +699,28 @@ document.addEventListener('DOMContentLoaded', () => {
     $('modal-close').addEventListener('click', closeModal);
     $('modal-overlay').addEventListener('click', e => { if (e.target === $('modal-overlay')) closeModal(); });
     document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+    
+    // Double click to toggle fullscreen on video
+    $('modal-player').addEventListener('dblclick', () => {
+        if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+            attemptFullscreenAndLandscape($('modal-player'));
+        } else {
+            if (document.exitFullscreen) document.exitFullscreen();
+            else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+            if (screen.orientation && screen.orientation.unlock) screen.orientation.unlock();
+        }
+    });
+
+    // Listen to orientation change to trigger resize adjustments
+    window.addEventListener('orientationchange', () => {
+        if ($('modal-overlay').classList.contains('open') && window.innerWidth <= 720) {
+            if (screen.orientation && screen.orientation.type.startsWith('landscape')) {
+               attemptFullscreenAndLandscape($('modal-player'));
+            } else if (screen.orientation && screen.orientation.type.startsWith('portrait')){
+                if (document.exitFullscreen) document.exitFullscreen().catch(()=>{});
+            }
+        }
+    });
 
     // Cargar más — paginación real con API
     $('load-more-btn').addEventListener('click', loadMoreFromAPI);
