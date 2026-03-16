@@ -19,6 +19,7 @@ let fetchOffset = 0;     // offset actual (para el próximo fetch)
 let feedHasMore = false; // ¿quedan más ítems en la API?
 let isFetchingMore = false; // bloquea doble-click en "Cargar más"
 let hlsInstance = null;
+let pipHlsInstance = null; // HLS del widget PiP
 
 // Carousel state
 let carouselSlides = [];
@@ -165,6 +166,9 @@ async function init() {
         buildCarousel();
         buildTabs();
         renderGrid();
+
+        // Lanzar el widget PiP con un ligero retraso
+        setTimeout(initLivePip, 800);
 
     } catch (e) {
         $('content-grid').innerHTML =
@@ -438,6 +442,63 @@ function showGridLoading() {
 }
 
 /* ============================================================
+   PiP LIVE TV WIDGET
+============================================================ */
+const PIP_DEFAULT = {
+    title:      'Emfravision',
+    stream_url: 'https://mlb.essastream.com:8081/emfravision/index.m3u8',
+};
+
+function initLivePip() {
+    const widget   = $('pip-widget');
+    const player   = $('pip-player');
+    const titleEl  = $('pip-title');
+    if (!widget || !player) return;
+
+    // Buscar en el feed si existe el canal; si no, usar el default
+    let liveItem = null;
+    for (const cat of allCategories) {
+        liveItem = cat.content.find(i => i.type === 'live_feed' &&
+            cleanUrl(i.stream_url) === PIP_DEFAULT.stream_url);
+        if (liveItem) break;
+    }
+
+    const streamUrl = PIP_DEFAULT.stream_url;
+    const title     = liveItem?.title || PIP_DEFAULT.title;
+
+    titleEl.textContent = title;
+
+    // Montar el stream HLS
+    if (pipHlsInstance) { pipHlsInstance.destroy(); pipHlsInstance = null; }
+    player.innerHTML = '';
+
+    const vid = document.createElement('video');
+    vid.muted     = true;  // autoplay requiere muted en muchos navegadores
+    vid.autoplay  = true;
+    vid.playsInline = true;
+    player.appendChild(vid);
+
+    if (Hls.isSupported()) {
+        pipHlsInstance = new Hls({ lowLatencyMode: true });
+        pipHlsInstance.loadSource(streamUrl);
+        pipHlsInstance.attachMedia(vid);
+        pipHlsInstance.on(Hls.Events.MANIFEST_PARSED, () => vid.play().catch(() => {}));
+    } else if (vid.canPlayType('application/vnd.apple.mpegurl')) {
+        vid.src = streamUrl;
+        vid.play().catch(() => {});
+    }
+
+    widget.hidden = false;
+}
+
+function closePip() {
+    const widget = $('pip-widget');
+    if (pipHlsInstance) { pipHlsInstance.destroy(); pipHlsInstance = null; }
+    $('pip-player').innerHTML = '';
+    if (widget) widget.hidden = true;
+}
+
+/* ============================================================
    PLAYER (funciones auxiliares compartidas)
 ============================================================ */
 function attachHlsOrNative(videoEl, url) {
@@ -493,6 +554,9 @@ function openModal(item) {
     const overlay = $('modal-overlay');
     const player = $('modal-player');
     const epSec = $('episodes-section');
+
+    // Cerrar el PiP para evitar audio doble
+    closePip();
 
     const titleEl = $('modal-title');
     if (titleEl) titleEl.textContent = item.title || '';
@@ -695,6 +759,26 @@ document.addEventListener('DOMContentLoaded', () => {
     $('modal-overlay').addEventListener('click', e => { if (e.target === $('modal-overlay')) closeModal(); });
     document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
     
+    // Botones del widget PiP
+    $('pip-close').addEventListener('click', closePip);
+    $('pip-expand').addEventListener('click', () => {
+        // Buscar el item live en el feed para abrirlo en el modal completo
+        let liveItem = null;
+        for (const cat of allCategories) {
+            liveItem = cat.content.find(i => i.type === 'live_feed' &&
+                cleanUrl(i.stream_url) === PIP_DEFAULT.stream_url);
+            if (liveItem) break;
+        }
+        closePip();
+        openModal(liveItem || {
+            title:      PIP_DEFAULT.title,
+            stream_url: PIP_DEFAULT.stream_url,
+            type:       'live_feed',
+            description: '',
+            is_series:  false,
+        });
+    });
+
     // Double click to toggle fullscreen on video
     $('modal-player').addEventListener('dblclick', () => {
         if (!document.fullscreenElement && !document.webkitFullscreenElement) {

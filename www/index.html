@@ -165,6 +165,25 @@
         </div>
     </div>
 
+    <!-- ── WIDGET FLOTANTE LIVE TV (PiP) ────────────────── -->
+    <div id="pip-widget" aria-label="Live TV en vivo" role="region" hidden>
+        <div class="pip-header">
+            <span class="pip-badge">🔴 EN VIVO</span>
+            <span class="pip-title" id="pip-title">La Cajita TV</span>
+            <div class="pip-actions">
+                <button id="pip-expand" class="pip-btn" aria-label="Ver en pantalla completa" title="Expandir">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+                </button>
+                <button id="pip-close" class="pip-btn" aria-label="Cerrar" title="Cerrar">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            </div>
+        </div>
+        <div class="pip-player-wrap">
+            <div id="pip-player"></div>
+        </div>
+    </div>
+
     <!-- ── LÓGICA DE LA APLICACIÓN ───────────────────────────── -->
     <script src="app.js"></script>
 
