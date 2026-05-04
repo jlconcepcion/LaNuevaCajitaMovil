@@ -834,10 +834,21 @@ nav {
 
 .modal-header {
     display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
+    align-items: center;
     gap: 12px;
-    padding: 20px 24px 0;
+    padding: 14px 20px 0;
+}
+
+/* Título dentro del modal */
+.modal-title-text {
+    font-size: .95rem;
+    font-weight: 600;
+    color: var(--text);
+    flex: 1;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 #modal-title {
@@ -864,6 +875,74 @@ nav {
     background: var(--card-hover);
     color: var(--text);
 }
+
+/* Botón de Favorito */
+#modal-fav-btn {
+    flex-shrink: 0;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    width: 34px;
+    height: 34px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background var(--transition), transform 0.15s;
+}
+
+#modal-fav-btn:hover {
+    background: var(--card-hover);
+    transform: scale(1.1);
+}
+
+#modal-fav-btn svg {
+    width: 18px;
+    height: 18px;
+    stroke: var(--muted);
+    transition: stroke 0.2s, fill 0.2s;
+}
+
+#modal-fav-btn.fav-active svg {
+    stroke: #ef4444;
+    fill: #ef4444;
+    animation: heartbeat 0.35s ease;
+}
+
+@keyframes heartbeat {
+    0%   { transform: scale(1);   }
+    40%  { transform: scale(1.35); }
+    70%  { transform: scale(.9);  }
+    100% { transform: scale(1);   }
+}
+
+/* Toast de notificación */
+#app-toast {
+    position: fixed;
+    bottom: 80px;
+    left: 50%;
+    transform: translateX(-50%) translateY(20px);
+    background: rgba(30, 30, 50, 0.95);
+    color: #fff;
+    border: 1px solid var(--border);
+    border-radius: 24px;
+    padding: 10px 22px;
+    font-size: .85rem;
+    font-weight: 500;
+    white-space: nowrap;
+    box-shadow: 0 6px 28px rgba(0,0,0,0.6);
+    opacity: 0;
+    pointer-events: none;
+    z-index: 9998;
+    transition: opacity 0.25s, transform 0.25s;
+}
+
+#app-toast.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+}
+
+
 
 #modal-player {
     position: relative;
@@ -1334,12 +1413,13 @@ nav {
     }
 
     /* Layout horizontal: player-wrap izq | episodios der */
-    #modal:has(.episodes-open) {
+    /* Nota: se usa clase .has-episodes en lugar de :has() para compatibilidad con WebViews antiguos */
+    #modal.has-episodes {
         flex-direction: row;
         flex-wrap: nowrap;
     }
 
-    #modal:has(.episodes-open) .player-wrap {
+    #modal.has-episodes .player-wrap {
         flex: 0 0 68%;
         /* Más espacio al video (68%) */
         display: flex;
@@ -1350,7 +1430,7 @@ nav {
     }
 
     /* En lugar de ocultar el header para no perder la "X", lo hacemos flotante arriba a la derecha */
-    #modal:has(.episodes-open) .modal-header {
+    #modal.has-episodes .modal-header {
         display: flex;
         position: absolute;
         top: 0;
@@ -1360,14 +1440,14 @@ nav {
         background: transparent;
     }
 
-    #modal:has(.episodes-open) #modal-close {
+    #modal.has-episodes #modal-close {
         background: rgba(0, 0, 0, 0.5);
         color: #fff;
         border: none;
     }
 
     /* El player ocupa el espacio y se centra */
-    #modal:has(.episodes-open) .player-container {
+    #modal.has-episodes .player-container {
         flex: 1;
         min-height: 0;
         display: flex;
@@ -1376,14 +1456,14 @@ nav {
         background: #000;
     }
 
-    #modal:has(.episodes-open) #modal-player {
+    #modal.has-episodes #modal-player {
         aspect-ratio: unset;
         height: 100%;
         margin: 0;
     }
 
     /* Descripción compacta debajo del player en landscape */
-    #modal:has(.episodes-open) #modal-desc {
+    #modal.has-episodes #modal-desc {
         display: block;
         font-size: .75rem;
         padding: 6px 12px 8px;
@@ -1394,11 +1474,12 @@ nav {
         white-space: nowrap;
     }
 
-    #modal:has(.episodes-open) #episodes-section {
+    #modal.has-episodes #episodes-section {
         flex: 1 1 auto;
         max-height: 100vh;
         padding: 0;
     }
+
 
     .ep-thumb {
         width: 72px;
@@ -1432,3 +1513,110 @@ nav {
         display: none !important;
     }
 }
+
+/* ============================================================
+   PiP LIVE TV WIDGET
+============================================================ */
+#pip-widget {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    width: 320px;
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: 0 10px 40px rgba(0,0,0,0.8);
+    z-index: 900;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    transition: transform 0.3s, opacity 0.3s;
+}
+
+#pip-widget[hidden] {
+    display: none !important;
+}
+
+.pip-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    background: rgba(7, 7, 15, 0.95);
+    border-bottom: 1px solid var(--border);
+}
+
+.pip-badge {
+    font-size: 0.65rem;
+    font-weight: 700;
+    color: #fff;
+    background: #ef4444;
+    padding: 2px 6px;
+    border-radius: 4px;
+    animation: pulse 1.2s infinite;
+}
+
+.pip-title {
+    font-size: 0.8rem;
+    font-weight: 600;
+    flex: 1;
+    margin: 0 8px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--text);
+}
+
+.pip-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.pip-btn {
+    background: transparent;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.2s;
+}
+
+.pip-btn:hover {
+    color: var(--text);
+}
+
+.pip-btn svg {
+    width: 18px;
+    height: 18px;
+}
+
+.pip-player-wrap {
+    width: 100%;
+    aspect-ratio: 16/9;
+    background: #000;
+    position: relative;
+}
+
+#pip-player video {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
+@media (max-width: 600px) {
+    #pip-widget {
+        bottom: 80px; /* Above mobile navigation if any, or just higher */
+        right: 16px;
+        width: 240px;
+    }
+}
+
+@media (max-width: 600px) and (orientation: landscape) {
+    #pip-widget {
+        bottom: 16px;
+        right: 16px;
+        width: 220px;
+    }
+}

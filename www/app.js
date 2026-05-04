@@ -21,6 +21,56 @@ let isFetchingMore = false; // bloquea doble-click en "Cargar más"
 let hlsInstance = null;
 let pipHlsInstance = null; // HLS del widget PiP
 
+/* ============================================================
+   FAVORITOS  (persisten en localStorage)
+============================================================ */
+function getFavorites() {
+    try { return JSON.parse(localStorage.getItem('lcj_favorites') || '[]'); }
+    catch { return []; }
+}
+
+function saveFavorites(favs) {
+    localStorage.setItem('lcj_favorites', JSON.stringify(favs));
+}
+
+function isFavorite(itemId) {
+    return getFavorites().some(f => f.id === itemId);
+}
+
+function toggleFavorite(item) {
+    let favs = getFavorites();
+    const idx = favs.findIndex(f => f.id === item.id);
+    if (idx >= 0) {
+        favs.splice(idx, 1);   // quitar
+    } else {
+        favs.unshift({          // agregar al inicio
+            id: item.id,
+            title: item.title,
+            thumbnail: item.thumbnail,
+            type: item.type,
+            is_series: item.is_series,
+            stream_url: item.stream_url || '',
+            embed_url: item.embed_url || '',
+            file_url: item.file_url || '',
+            duration: item.duration || 0,
+            episode_count: item.episode_count || 0,
+        });
+    }
+    saveFavorites(favs);
+    return idx < 0; // true = ahora es favorito
+}
+
+function updateFavButton(itemId) {
+    const btn = $('modal-fav-btn');
+    const icon = $('modal-fav-icon');
+    if (!btn || !icon) return;
+    const liked = isFavorite(itemId);
+    icon.style.fill   = liked ? '#ef4444' : 'none';
+    icon.style.stroke = liked ? '#ef4444' : 'currentColor';
+    btn.setAttribute('aria-label', liked ? 'Quitar de favoritos' : 'Agregar a favoritos');
+    btn.classList.toggle('fav-active', liked);
+}
+
 // Carousel state
 let carouselSlides = [];
 let carouselIndex = 0;
@@ -54,6 +104,22 @@ function debounce(fn, ms) {
 function cleanUrl(url) {
     return url ? url.replace(/\\/g, '/') : '';
 }
+
+/** Toast de notificación breve */
+let toastTimer = null;
+function showToast(msg) {
+    let toast = document.getElementById('app-toast');
+    if (!toast) {
+        toast = document.createElement('div');
+        toast.id = 'app-toast';
+        document.body.appendChild(toast);
+    }
+    toast.textContent = msg;
+    toast.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toast.classList.remove('show'), 2400);
+}
+
 
 /* ============================================================
    FETCH
@@ -558,17 +624,27 @@ function openModal(item) {
     // Cerrar el PiP para evitar audio doble
     closePip();
 
-    const titleEl = $('modal-title');
-    if (titleEl) titleEl.textContent = item.title || '';
+    // Título visible en el header del modal
+    const titleTextEl = $('modal-title');
+    if (titleTextEl) titleTextEl.textContent = item.title || '';
 
-    const descEl = $('modal-title');
+
+    // Descripción debajo del player (modal-desc)
+    const descEl = $('modal-desc');
     if (descEl) descEl.textContent = item.description || '';
+
+    // Estado del botón de favorito
+    updateFavButton(item.id);
+    // Guardar referencia al item actual para el botón de fav
+    $('modal-fav-btn')._currentItem = item;
 
     player.innerHTML = '';
     epSec.style.display = 'none';
     epSec.classList.remove('episodes-open');
+    $('modal').classList.remove('has-episodes'); // compat. WebViews antiguos
     $('episodes-list').innerHTML = '';
     if (hlsInstance) { hlsInstance.destroy(); hlsInstance = null; }
+
 
     if (item.is_series) {
         player.innerHTML = `
@@ -583,6 +659,9 @@ function openModal(item) {
 
     overlay.classList.add('open');
     document.body.style.overflow = 'hidden';
+    
+    // Agregar un estado en el historial para interceptar el botón Atrás de Android
+    history.pushState({ modalOpen: true }, '');
 }
 
 async function attemptFullscreenAndLandscape(element) {
@@ -609,6 +688,8 @@ async function loadEpisodes(seriesId) {
     const epList = $('episodes-list');
     epSec.style.display = 'block';
     epSec.classList.add('episodes-open');
+    $('modal').classList.add('has-episodes'); // activa layout horizontal sin :has()
+
     epList.innerHTML = `<div class="ep-loading"><div class="spinner" style="width:24px;height:24px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:8px"></div>Cargando episodios…</div>`;
 
     try {
@@ -664,9 +745,15 @@ async function loadEpisodes(seriesId) {
     }
 }
 
-function closeModal() {
+function closeModal(fromPopState = false) {
     $('modal-overlay').classList.remove('open');
     document.body.style.overflow = '';
+    
+    // Si se cierra manualmente (botón X o Escape), retroceder el historial
+    // para limpiar el estado que metimos al abrir el modal.
+    if (!fromPopState && history.state && history.state.modalOpen) {
+        history.back();
+    }
     
     // Exit fullscreen and unlock orientation if active
     try {
@@ -758,6 +845,16 @@ document.addEventListener('DOMContentLoaded', () => {
     $('modal-close').addEventListener('click', closeModal);
     $('modal-overlay').addEventListener('click', e => { if (e.target === $('modal-overlay')) closeModal(); });
     document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+
+    // Botón de favorito en el modal
+    $('modal-fav-btn').addEventListener('click', () => {
+        const item = $('modal-fav-btn')._currentItem;
+        if (!item) return;
+        const nowFav = toggleFavorite(item);
+        updateFavButton(item.id);
+        // Notificación visual breve (toast)
+        showToast(nowFav ? '♥ Agregado a favoritos' : 'Eliminado de favoritos');
+    });
     
     // Botones del widget PiP
     $('pip-close').addEventListener('click', closePip);
@@ -805,6 +902,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.addEventListener('fullscreenchange', handleFullscreenChange);
     document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+
+    // Interceptar el botón "Atrás" de Android o gestos táctiles de retroceso
+    window.addEventListener('popstate', () => {
+        if ($('modal-overlay').classList.contains('open')) {
+            closeModal(true); // Pasar true para evitar bucle de history.back()
+        }
+    });
 
     // Cargar más — paginación real con API
     $('load-more-btn').addEventListener('click', loadMoreFromAPI);

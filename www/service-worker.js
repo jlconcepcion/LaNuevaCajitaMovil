@@ -6,16 +6,16 @@
      · Fallback offline    → página de aviso cuando no hay red
 ============================================================ */
 
-const CACHE_NAME = 'lacajita-v1';
+const CACHE_NAME = 'lacajita-v2'; // Incrementado al mover hls.js a local
 const STATIC_ASSETS = [
     './',
     './index.html',
     './styles.css',
     './app.js',
     './manifest.json',
+    './js/hls.min.js',
     './imges/102.png',
     'https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap',
-    'https://cdn.jsdelivr.net/npm/hls.js@latest/dist/hls.min.js',
 ];
 
 /* ── Instalación: pre-cachear archivos estáticos ───────── */
@@ -54,11 +54,10 @@ self.addEventListener('fetch', event => {
         return;
     }
 
-    // 2. CDN de fuentes Google / jsDelivr → Cache First
+    // 2. CDN de fuentes Google → Cache First
     if (
         url.hostname === 'fonts.googleapis.com' ||
-        url.hostname === 'fonts.gstatic.com' ||
-        url.hostname === 'cdn.jsdelivr.net'
+        url.hostname === 'fonts.gstatic.com'
     ) {
         event.respondWith(cacheFirst(request));
         return;

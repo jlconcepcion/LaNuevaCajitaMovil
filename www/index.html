@@ -29,8 +29,9 @@
     <!-- Estilos -->
     <link rel="stylesheet" href="styles.css" />
 
-    <!-- HLS.js para streams en vivo -->
-    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest/dist/hls.min.js"></script>
+    <!-- HLS.js local (v1.5.15) — incluido localmente para evitar dependencia de CDN -->
+    <script src="js/hls.min.js"></script>
+
 </head>
 
 <body>
@@ -129,8 +130,9 @@
             <!-- ── Zona fija: header + player + descripción ── -->
             <div class="player-wrap">
                 <div class="modal-header">
-                    <!-- Se eliminó h2#modal-title de aquí -->
-                    <div style="display:flex;align-items:center;gap:8px; width:100%; justify-content:flex-end;">
+                    <!-- Título y controles del modal -->
+                    <h2 id="modal-title" class="modal-title-text"></h2>
+                    <div style="display:flex;align-items:center;gap:8px; margin-left:auto;">
                         <!-- Hint de rotación: solo visible en móvil portrait -->
                         <div id="rotate-hint" aria-label="Rotar pantalla para mejor vista" title="Gira el dispositivo">
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -140,6 +142,12 @@
                             </svg>
                             <span>Gira el dispositivo</span>
                         </div>
+                        <!-- Botón de Favorito -->
+                        <button id="modal-fav-btn" aria-label="Agregar a favoritos" title="Favorito">
+                            <svg id="modal-fav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+                            </svg>
+                        </button>
                         <button id="modal-close" aria-label="Cerrar">✕</button>
                     </div>
                 </div>
